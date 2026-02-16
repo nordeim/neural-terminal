@@ -15,9 +15,21 @@ class TestSettings:
     """Tests for Pydantic Settings."""
 
     def test_settings_load_with_defaults(self, monkeypatch):
-        """Test that settings load with default values."""
+        """Test that settings load with default values when env vars not set."""
+        # Mock env file to not exist by using a non-existent path
         monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-        settings = Settings()
+        
+        # Create settings with mocked env file location
+        from pydantic_settings import SettingsConfigDict
+        
+        class TestSettings(Settings):
+            model_config = SettingsConfigDict(
+                env_file="/nonexistent/.env",  # Prevent loading real .env
+                env_file_encoding="utf-8",
+                extra="ignore",
+            )
+        
+        settings = TestSettings()
         
         assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
         assert settings.openrouter_timeout == 60

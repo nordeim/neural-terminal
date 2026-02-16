@@ -118,7 +118,7 @@ class Conversation:
     """
     id: UUID = field(default_factory=uuid4)
     title: Optional[str] = None
-    model_id: str = "openai/gpt-3.5-turbo"  # Default
+    model_id: str = "meta/llama-3.1-8b-instruct"  # Default
     status: ConversationStatus = ConversationStatus.ACTIVE
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)

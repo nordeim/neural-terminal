@@ -20,25 +20,26 @@ class TestAppConfig:
         """Default configuration values."""
         config = AppConfig()
         
-        assert config.openrouter_api_key == ""
-        assert config.default_model == "openai/gpt-3.5-turbo"
+        assert config.default_model == "meta/llama-3.1-8b-instruct"
         assert config.budget_limit is None
-        assert config.theme == "terminal"
-        assert config.max_tokens_per_message == 4000
+        assert config.theme == "amber"
+        assert config.max_tokens_per_message == 8192
         assert config.temperature == 0.7
+        assert config.system_prompt == "You are a helpful assistant"
     
     def test_to_dict(self):
         """Convert to dictionary."""
         config = AppConfig(
-            openrouter_api_key="test-key",
             budget_limit=Decimal("10.00"),
         )
         
         data = config.to_dict()
         
-        assert data["openrouter_api_key"] == "test-key"
+        # API key not stored in config (comes from .env)
+        assert "openrouter_api_key" not in data
         assert data["budget_limit"] == "10.00"
-        assert data["theme"] == "terminal"
+        assert data["theme"] == "amber"
+        assert data["system_prompt"] == "You are a helpful assistant"
     
     def test_to_dict_no_budget(self):
         """Dictionary with no budget."""
@@ -51,20 +52,22 @@ class TestAppConfig:
     def test_from_dict(self):
         """Create from dictionary."""
         data = {
-            "openrouter_api_key": "test-key",
             "default_model": "gpt-4",
             "budget_limit": "25.00",
-            "theme": "amber",
+            "theme": "minimal",
             "max_tokens_per_message": 2000,
             "temperature": 0.5,
+            "system_prompt": "Custom prompt",
         }
         
         config = AppConfig.from_dict(data)
         
-        assert config.openrouter_api_key == "test-key"
+        # API key not stored in config (comes from .env)
+        assert not hasattr(config, 'openrouter_api_key')
         assert config.default_model == "gpt-4"
         assert config.budget_limit == Decimal("25.00")
-        assert config.theme == "amber"
+        assert config.theme == "minimal"
+        assert config.system_prompt == "Custom prompt"
     
     def test_from_dict_partial(self):
         """Create from partial dictionary."""
@@ -73,7 +76,7 @@ class TestAppConfig:
         config = AppConfig.from_dict(data)
         
         assert config.theme == "minimal"
-        assert config.default_model == "openai/gpt-3.5-turbo"  # Default
+        assert config.default_model == "meta/llama-3.1-8b-instruct"  # Default
 
 
 class TestSessionState:

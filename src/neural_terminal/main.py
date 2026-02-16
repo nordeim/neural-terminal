@@ -17,7 +17,7 @@ from .components.chat_container import ChatContainer, MessageViewModel
 from .components.header import Header, HeaderConfig, Sidebar
 from .components.status_bar import StatusBar, StatusInfo, CostDisplay
 from .components.message_renderer import MessageRenderer
-from .components.error_handler import ErrorHandler
+from .components.error_handler import ErrorHandler, ErrorSeverity
 
 
 class NeuralTerminalApp:
@@ -27,16 +27,23 @@ class NeuralTerminalApp:
     a complete chat interface.
     """
     
-    # Available OpenRouter models
+    # Available models (NVIDIA API compatible)
     AVAILABLE_MODELS = [
-        ("openai/gpt-4-turbo", "GPT-4 Turbo"),
-        ("openai/gpt-4", "GPT-4"),
-        ("openai/gpt-3.5-turbo", "GPT-3.5 Turbo"),
-        ("anthropic/claude-3-opus", "Claude 3 Opus"),
-        ("anthropic/claude-3-sonnet", "Claude 3 Sonnet"),
-        ("google/gemini-pro", "Gemini Pro"),
-        ("meta-llama/llama-2-70b-chat", "Llama 2 70B"),
-        ("mistral/mistral-medium", "Mistral Medium"),
+        ("z-ai/glm5", "GLM 5 (NVIDIA Recommended)"),
+        ("meta/llama-3.1-8b-instruct", "Llama 3.1 8B"),
+        ("meta/llama-3.1-70b-instruct", "Llama 3.1 70B"),
+        ("meta/llama-3.1-405b-instruct", "Llama 3.1 405B"),
+        ("meta/llama-3.3-70b-instruct", "Llama 3.3 70B"),
+        ("meta/llama-4-scout-17b-16e-instruct", "Llama 4 Scout"),
+        ("meta/llama-4-maverick-17b-128e-instruct", "Llama 4 Maverick"),
+        ("mistralai/mistral-7b-instruct-v0.2", "Mistral 7B"),
+        ("mistralai/mixtral-8x7b-instruct-v0.1", "Mixtral 8x7B"),
+        ("mistralai/codestral-22b-instruct-v0.1", "Codestral 22B"),
+        ("qwen/qwen2.5-7b-instruct", "Qwen 2.5 7B"),
+        ("qwen/qwen2.5-72b-instruct", "Qwen 2.5 72B"),
+        ("01-ai/yi-large", "Yi Large"),
+        ("google/gemma-2-9b-it", "Gemma 2 9B"),
+        ("google/gemma-2-27b-it", "Gemma 2 27B"),
     ]
     
     def __init__(self):
@@ -83,7 +90,10 @@ class NeuralTerminalApp:
         
         # Check for initialization errors
         if self._app_state.session.error_message:
-            self._error_handler.show_error(self._app_state.session.error_message)
+            self._error_handler.show_error_message(
+                f"⚠️ {self._app_state.session.error_message}",
+                ErrorSeverity.ERROR
+            )
             return
         
         # Render sidebar
@@ -102,9 +112,34 @@ class NeuralTerminalApp:
         with st.sidebar:
             st.title("⚡ Neural Terminal")
             
-            # New conversation button
+            # System Prompt configuration
+            with st.expander("📝 System Prompt", expanded=False):
+                system_prompt = st.text_area(
+                    "System Prompt",
+                    value=self._app_state.config.system_prompt,
+                    placeholder="Enter a system prompt to guide the AI's behavior...",
+                    label_visibility="collapsed",
+                    height=100,
+                    key="sidebar_system_prompt",
+                )
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("💾 Save", use_container_width=True, key="save_sys_prompt"):
+                        self._app_state.update_config(system_prompt=system_prompt)
+                        st.success("Saved!")
+                with col2:
+                    if st.button("🗑️ Clear", use_container_width=True, key="clear_sys_prompt"):
+                        self._app_state.update_config(system_prompt="")
+                        st.rerun()
+                
+                st.caption("Applied to new conversations only")
+            
+            # New conversation button - uses system prompt from config
             if st.button("➕ New Conversation", use_container_width=True):
-                self._app_state.create_conversation()
+                self._app_state.create_conversation(
+                    system_prompt=self._app_state.config.system_prompt or None
+                )
                 st.rerun()
             
             st.divider()
@@ -255,9 +290,13 @@ class NeuralTerminalApp:
             messages: List of message dictionaries
         """
         for msg in messages:
+            # Safety check for None messages
+            if msg is None:
+                continue
+            
             view_model = MessageViewModel(
-                role=msg["role"],
-                content=msg["content"],
+                role=msg.get("role", "assistant"),
+                content=msg.get("content", ""),
                 cost=Decimal(msg.get("cost", "0")),
                 tokens=msg.get("tokens", 0),
             )
@@ -267,7 +306,14 @@ class NeuralTerminalApp:
         """Render message input area."""
         st.divider()
         
-        # Use a form for better control
+        # Check and handle clear flag BEFORE widget instantiation.
+        # Streamlit prohibits modifying session_state after widget with same key
+        # is instantiated (StreamlitAPIException). We defer the clear operation
+        # by using a flag that is processed on the next render cycle.
+        if st.session_state.get("_clear_message_input", False):
+            st.session_state["message_input"] = ""
+            st.session_state["_clear_message_input"] = False
+        
         with st.container():
             col1, col2 = st.columns([6, 1])
             
@@ -306,8 +352,10 @@ class NeuralTerminalApp:
         if not content.strip():
             return
         
-        # Clear input
-        st.session_state["message_input"] = ""
+        # Set flag to clear input on next render cycle.
+        # Cannot directly modify widget-bound session state after widget instantiation
+        # due to Streamlit API restrictions (StreamlitAPIException).
+        st.session_state["_clear_message_input"] = True
         
         # Run async message sending
         try:
@@ -348,15 +396,40 @@ class NeuralTerminalApp:
         """Render settings configuration page."""
         st.title("⚙️ Settings")
         
-        # API Configuration
-        st.subheader("API Configuration")
+        # API Configuration (Read-only from .env file)
+        st.subheader("API Configuration (from .env)")
         
-        api_key = st.text_input(
+        # Import settings to display current env values
+        from .config import settings
+        
+        # Display masked API key
+        api_key_value = settings.openrouter_api_key.get_secret_value()
+        masked_key = api_key_value[:8] + "..." + api_key_value[-4:] if len(api_key_value) > 12 else "***"
+        
+        st.text_input(
             "OpenRouter API Key",
-            value=self._app_state.config.openrouter_api_key,
-            type="password",
-            help="Your OpenRouter API key. Get one at openrouter.ai",
+            value=masked_key,
+            disabled=True,
+            help="Configured via OPENROUTER_API_KEY in .env file",
         )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input(
+                "Base URL",
+                value=settings.openrouter_base_url,
+                disabled=True,
+                help="Configured via OPENROUTER_BASE_URL in .env file",
+            )
+        with col2:
+            st.number_input(
+                "Timeout (seconds)",
+                value=settings.openrouter_timeout,
+                disabled=True,
+                help="Configured via OPENROUTER_TIMEOUT in .env file",
+            )
+        
+        st.caption("🔒 API settings are loaded from environment variables (.env file) and cannot be changed via UI.")
         
         # Model Settings
         st.subheader("Model Settings")
@@ -382,9 +455,21 @@ class NeuralTerminalApp:
         max_tokens = st.number_input(
             "Max Tokens per Message",
             min_value=100,
-            max_value=8000,
+            max_value=65535,
             value=self._app_state.config.max_tokens_per_message,
             step=100,
+        )
+        
+        # System Prompt (Default)
+        st.subheader("Default System Prompt")
+        
+        default_system_prompt = st.text_area(
+            "Default System Prompt",
+            value=self._app_state.config.system_prompt,
+            placeholder="Enter a default system prompt for new conversations...",
+            label_visibility="collapsed",
+            height=100,
+            help="This system prompt will be applied to all new conversations",
         )
         
         # Budget Settings
@@ -426,12 +511,12 @@ class NeuralTerminalApp:
         
         if st.button("💾 Save Settings", type="primary", use_container_width=True):
             self._app_state.update_config(
-                openrouter_api_key=api_key,
                 default_model=model,
                 temperature=temperature,
                 max_tokens_per_message=max_tokens,
                 budget_limit=budget_decimal,
                 theme=theme,
+                system_prompt=default_system_prompt,
             )
             
             st.success("Settings saved!")

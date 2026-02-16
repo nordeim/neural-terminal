@@ -1,3 +1,15 @@
+---
+title: Nexx Chat
+emoji: 🏆
+colorFrom: indigo
+colorTo: indigo
+sdk: docker
+pinned: false
+license: mit
+short_description: neutral terminal
+app_port: 7860
+---
+
 # Neural Terminal ⚡
 
 <div align="center">

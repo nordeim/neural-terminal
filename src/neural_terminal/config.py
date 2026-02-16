@@ -22,8 +22,16 @@ class Settings(BaseSettings):
         description="OpenRouter API key",
         validation_alias="OPENROUTER_API_KEY"
     )
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_timeout: int = Field(default=60, ge=10, le=300)
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        validation_alias="OPENROUTER_BASE_URL"
+    )
+    openrouter_timeout: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        validation_alias="OPENROUTER_TIMEOUT"
+    )
     
     # Application
     app_env: Literal["development", "staging", "production"] = "development"

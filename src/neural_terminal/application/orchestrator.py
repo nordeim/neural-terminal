@@ -72,10 +72,18 @@ class ChatOrchestrator:
         """
         return next((m for m in self._available_models if m.id == model_id), None)
     
-    async def create_conversation(
+    def update_api_key(self, api_key: str) -> None:
+        """Update OpenRouter API key.
+        
+        Args:
+            api_key: New API key
+        """
+        self._openrouter.update_api_key(api_key)
+    
+    def create_conversation(
         self,
         title: Optional[str] = None,
-        model_id: str = "openai/gpt-3.5-turbo",
+        model_id: str = "meta/llama-3.1-8b-instruct",
         system_prompt: Optional[str] = None
     ) -> Conversation:
         """Initialize new conversation with optional system context.

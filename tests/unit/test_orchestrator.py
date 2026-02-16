@@ -47,10 +47,10 @@ class TestChatOrchestrator:
                 from neural_terminal.infrastructure.openrouter import OpenRouterModel
                 return [
                     OpenRouterModel(
-                        id="openai/gpt-3.5-turbo",
-                        name="GPT-3.5 Turbo",
-                        pricing={"prompt": "0.0015", "completion": "0.002"},
-                        context_length=4096
+                        id="meta/llama-3.1-8b-instruct",
+                        name="Llama 3.1 8B",
+                        pricing={"prompt": "0.0005", "completion": "0.001"},
+                        context_length=8192
                     )
                 ]
             
@@ -63,7 +63,7 @@ class TestChatOrchestrator:
                     "content": "Hello there",
                     "usage": TokenUsage(prompt_tokens=10, completion_tokens=2, total_tokens=12),
                     "latency_ms": 500,
-                    "model": "openai/gpt-3.5-turbo"
+                    "model": "meta/llama-3.1-8b-instruct"
                 }
         
         client = MockOpenRouterClient()
@@ -85,12 +85,11 @@ class TestChatOrchestrator:
             "circuit": circuit,
         }
     
-    @pytest.mark.asyncio
-    async def test_create_conversation(self, setup):
+    def test_create_conversation(self, setup):
         """Test creating a conversation."""
         orchestrator = setup["orchestrator"]
         
-        conv = await orchestrator.create_conversation(
+        conv = orchestrator.create_conversation(
             title="Test Conversation",
             model_id="openai/gpt-3.5-turbo"
         )
@@ -99,13 +98,12 @@ class TestChatOrchestrator:
         assert conv.model_id == "openai/gpt-3.5-turbo"
         assert conv.status == ConversationStatus.ACTIVE
     
-    @pytest.mark.asyncio
-    async def test_create_conversation_with_system_prompt(self, setup):
+    def test_create_conversation_with_system_prompt(self, setup):
         """Test creating a conversation with system prompt."""
         orchestrator = setup["orchestrator"]
         repo = setup["repo"]
         
-        conv = await orchestrator.create_conversation(
+        conv = orchestrator.create_conversation(
             title="Test",
             system_prompt="You are helpful."
         )
@@ -124,7 +122,7 @@ class TestChatOrchestrator:
         models = await orchestrator.load_models()
         
         assert len(models) == 1
-        assert models[0].id == "openai/gpt-3.5-turbo"
+        assert models[0].id == "meta/llama-3.1-8b-instruct"
     
     @pytest.mark.asyncio
     async def test_get_model_config(self, setup):
@@ -132,18 +130,18 @@ class TestChatOrchestrator:
         orchestrator = setup["orchestrator"]
         await orchestrator.load_models()
         
-        config = orchestrator.get_model_config("openai/gpt-3.5-turbo")
+        config = orchestrator.get_model_config("meta/llama-3.1-8b-instruct")
         
         assert config is not None
-        assert config.prompt_price == Decimal("0.0015")
-        assert config.completion_price == Decimal("0.002")
+        assert config.prompt_price == Decimal("0.0005")
+        assert config.completion_price == Decimal("0.001")
     
     @pytest.mark.asyncio
     async def test_send_message_validates_empty_input(self, setup):
         """Test that empty input raises ValidationError."""
         orchestrator = setup["orchestrator"]
         
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         with pytest.raises(ValidationError, match="cannot be empty"):
             async for _ in orchestrator.send_message(conv.id, ""):
@@ -158,7 +156,7 @@ class TestChatOrchestrator:
         """Test that long input raises ValidationError."""
         orchestrator = setup["orchestrator"]
         
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         with pytest.raises(ValidationError, match="exceeds maximum length"):
             async for _ in orchestrator.send_message(conv.id, "x" * 32001):
@@ -191,7 +189,7 @@ class TestChatOrchestrator:
         # Load models first
         await orchestrator.load_models()
         
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         # Send message
         async for delta, meta in orchestrator.send_message(conv.id, "Hi"):
@@ -210,7 +208,7 @@ class TestChatOrchestrator:
         repo = setup["repo"]
         
         await orchestrator.load_models()
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         # Send message
         async for delta, meta in orchestrator.send_message(conv.id, "Hi"):
@@ -231,7 +229,7 @@ class TestChatOrchestrator:
         repo = setup["repo"]
         
         await orchestrator.load_models()
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         initial_cost = conv.total_cost
         
@@ -249,7 +247,7 @@ class TestChatOrchestrator:
         orchestrator = setup["orchestrator"]
         
         await orchestrator.load_models()
-        conv = await orchestrator.create_conversation()
+        conv = orchestrator.create_conversation()
         
         final_meta = None
         async for delta, meta in orchestrator.send_message(conv.id, "Hi"):

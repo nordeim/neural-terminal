@@ -40,12 +40,15 @@ class TokenCounter:
         # Extract base model name
         base = model_id.split("/")[-1].lower()
         
-        # Find matching encoding
-        encoding_name = "default"
-        for key, enc in self.ENCODING_MAP.items():
-            if key in base:
-                encoding_name = enc
+        # Find matching encoding key in model name
+        encoding_key = "default"
+        for key in self.ENCODING_MAP:
+            if key in base and key != "default":
+                encoding_key = key
                 break
+        
+        # Get actual encoding name from map
+        encoding_name = self.ENCODING_MAP[encoding_key]
         
         # Cache encoder instances
         if encoding_name not in self._encoders:

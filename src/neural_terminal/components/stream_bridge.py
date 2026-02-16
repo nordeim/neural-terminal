@@ -44,6 +44,8 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
         
         def target():
             try:
+                # Reset any clients that may have been bound to old event loop
+                _reset_async_clients()
                 result[0] = asyncio.run(coro)
             except Exception as e:
                 exception[0] = e
@@ -58,6 +60,35 @@ def run_async(coro: Coroutine[Any, Any, T]) -> T:
     else:
         # No loop running - can use asyncio.run directly
         return asyncio.run(coro)
+
+
+def _reset_async_clients():
+    """Reset async clients that may be bound to a different event loop.
+    
+    This is called before running async code in a new thread to ensure
+    clients are recreated for the new event loop.
+    """
+    try:
+        # Import here to avoid circular imports
+        from neural_terminal.app_state import get_app_state
+        
+        app_state = get_app_state()
+        if app_state._orchestrator and hasattr(app_state._orchestrator, '_openrouter'):
+            openrouter = app_state._orchestrator._openrouter
+            if hasattr(openrouter, '_client') and openrouter._client is not None:
+                # Close and reset the client so it's recreated with new event loop
+                try:
+                    import asyncio
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Schedule close if loop is running
+                        asyncio.create_task(openrouter._client.aclose())
+                except Exception:
+                    pass
+                openrouter._client = None
+    except Exception:
+        # Ignore errors during reset - client will be recreated anyway
+        pass
 
 
 class StreamlitStreamBridge:

@@ -25,23 +25,28 @@ from .config import settings
 
 @dataclass
 class AppConfig:
-    """Application configuration state."""
-    openrouter_api_key: str = ""
-    default_model: str = "openai/gpt-3.5-turbo"
+    """Application configuration state.
+    
+    Note: API configuration (OPENROUTER_API_KEY, BASE_URL, TIMEOUT)
+    is loaded from environment variables (.env file) and is not
+    stored in this config.
+    """
+    default_model: str = "meta/llama-3.1-8b-instruct"
     budget_limit: Optional[Decimal] = None
-    theme: str = "terminal"
-    max_tokens_per_message: int = 4000
+    theme: str = "amber"
+    max_tokens_per_message: int = 8192
     temperature: float = 0.7
+    system_prompt: str = "You are a helpful assistant"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
-            "openrouter_api_key": self.openrouter_api_key,
             "default_model": self.default_model,
             "budget_limit": str(self.budget_limit) if self.budget_limit else None,
             "theme": self.theme,
             "max_tokens_per_message": self.max_tokens_per_message,
             "temperature": self.temperature,
+            "system_prompt": self.system_prompt,
         }
     
     @classmethod
@@ -49,12 +54,12 @@ class AppConfig:
         """Create from dictionary."""
         budget = data.get("budget_limit")
         return cls(
-            openrouter_api_key=data.get("openrouter_api_key", ""),
-            default_model=data.get("default_model", "openai/gpt-3.5-turbo"),
+            default_model=data.get("default_model", "meta/llama-3.1-8b-instruct"),
             budget_limit=Decimal(budget) if budget else None,
-            theme=data.get("theme", "terminal"),
-            max_tokens_per_message=data.get("max_tokens_per_message", 4000),
+            theme=data.get("theme", "amber"),
+            max_tokens_per_message=data.get("max_tokens_per_message", 8192),
             temperature=data.get("temperature", 0.7),
+            system_prompt=data.get("system_prompt", "You are a helpful assistant"),
         )
 
 
@@ -285,11 +290,12 @@ class ApplicationState:
             except Exception:
                 pass
     
-    def create_conversation(self, system_prompt: Optional[str] = None) -> str:
+    def create_conversation(self, system_prompt: Optional[str] = None, model_id: Optional[str] = None) -> str:
         """Create new conversation.
         
         Args:
             system_prompt: Optional system prompt
+            model_id: Optional model ID (defaults to config.default_model)
             
         Returns:
             New conversation ID
@@ -297,8 +303,12 @@ class ApplicationState:
         if not self._orchestrator:
             raise RuntimeError("Application not initialized")
         
+        # Use provided model or fall back to config default
+        model = model_id or self.config.default_model
+        
         conversation = self._orchestrator.create_conversation(
             system_prompt=system_prompt,
+            model_id=model,
         )
         
         self.session.current_conversation_id = str(conversation.id)
@@ -375,9 +385,12 @@ class ApplicationState:
         if not self._orchestrator:
             raise RuntimeError("Application not initialized")
         
+        # Ensure streaming state is reset from any previous errors
+        self.session.is_streaming = False
+        
         if not self.session.current_conversation_id:
-            # Create new conversation
-            self.create_conversation()
+            # Create new conversation with current default model
+            self.create_conversation(model_id=self.config.default_model)
         
         self.session.is_streaming = True
         self.session.streaming_content = ""

@@ -58,6 +58,25 @@ class OpenRouterClient:
         self.timeout = settings.openrouter_timeout
         self._client: Optional[httpx.AsyncClient] = None
     
+    def update_api_key(self, api_key: str) -> None:
+        """Update API key and reset client connection.
+        
+        Args:
+            api_key: New OpenRouter API key
+        """
+        self.api_key = api_key
+        # Close existing client so new one is created with updated key
+        if self._client is not None and not self._client.is_closed:
+            import asyncio
+            try:
+                asyncio.get_running_loop()
+                # If in async context, schedule close
+                asyncio.create_task(self._client.aclose())
+            except RuntimeError:
+                # No running loop, client will be recreated on next use
+                pass
+        self._client = None
+    
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
@@ -152,8 +171,21 @@ class OpenRouterClient:
                 
                 try:
                     chunk = json.loads(data)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
+                    
+                    # Safely extract content with null checks
+                    if chunk is None:
+                        continue
+                    
+                    choices = chunk.get("choices", [])
+                    if not choices or not isinstance(choices, list):
+                        continue
+                    
+                    first_choice = choices[0] if choices else {}
+                    if first_choice is None:
+                        continue
+                    
+                    delta = first_choice.get("delta", {}) or {}
+                    content = delta.get("content", "") if delta else ""
                     
                     if content:
                         full_content += content
