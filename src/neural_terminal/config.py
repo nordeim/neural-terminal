@@ -23,7 +23,7 @@ class Settings(BaseSettings):
         validation_alias="OPENROUTER_API_KEY"
     )
     openrouter_base_url: str = Field(
-        default="https://openrouter.ai/api/v1",
+        default="https://integrate.api.nvidia.com/v1",
         validation_alias="OPENROUTER_BASE_URL"
     )
     openrouter_timeout: int = Field(

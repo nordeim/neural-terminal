@@ -31,7 +31,7 @@ class AppConfig:
     is loaded from environment variables (.env file) and is not
     stored in this config.
     """
-    default_model: str = "meta/llama-3.1-8b-instruct"
+    default_model: str = "z-ai/glm5"
     budget_limit: Optional[Decimal] = None
     theme: str = "terminal"
     max_tokens_per_message: int = 8192
@@ -54,9 +54,9 @@ class AppConfig:
         """Create from dictionary."""
         budget = data.get("budget_limit")
         return cls(
-            default_model=data.get("default_model", "meta/llama-3.1-8b-instruct"),
+            default_model=data.get("default_model", "z-ai/glm5"),
             budget_limit=Decimal(budget) if budget else None,
-            theme=data.get("theme", "amber"),
+            theme=data.get("theme", "terminal"),
             max_tokens_per_message=data.get("max_tokens_per_message", 8192),
             temperature=data.get("temperature", 0.7),
             system_prompt=data.get("system_prompt", "You are a helpful assistant"),

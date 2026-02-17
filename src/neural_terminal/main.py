@@ -70,8 +70,15 @@ class NeuralTerminalApp:
         
         # Initialize app state
         try:
+            import sys
+            print(f"[DEBUG] Starting app initialization...", file=sys.stderr)
             self._app_state.initialize()
+            print(f"[DEBUG] App initialization completed successfully", file=sys.stderr)
         except Exception as e:
+            import sys
+            print(f"[DEBUG] App initialization failed: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             self._error_handler.show_startup_error(str(e))
             return
         
@@ -85,16 +92,33 @@ class NeuralTerminalApp:
     
     def run(self) -> None:
         """Run the main application loop."""
-        # Setup
-        self.setup()
+        # Check if app is properly initialized
+        if not self._app_state.is_initialized():
+            import sys
+            print(f"[DEBUG] App not initialized in run(), attempting to initialize...", file=sys.stderr)
+            try:
+                self._app_state.initialize()
+                print(f"[DEBUG] App initialization completed in run()", file=sys.stderr)
+            except Exception as e:
+                import sys
+                print(f"[DEBUG] App initialization failed in run(): {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                st.error("⚠️ Failed to initialize application. Please check the console for details.")
+                return
         
-        # Check for initialization errors
-        if self._app_state.session.error_message:
-            self._error_handler.show_error_message(
-                f"⚠️ {self._app_state.session.error_message}",
-                ErrorSeverity.ERROR
-            )
-            return
+        # Apply theme on every render to ensure persistence after rerun
+        theme_name = self._app_state.config.theme
+        try:
+            # Clear injection flag to force re-injection (fixes theme persistence)
+            for key in list(st.session_state.keys()):
+                if key.endswith("_injected"):
+                    del st.session_state[key]
+            
+            theme = ThemeRegistry.get_theme(theme_name)
+            inject_css(theme)
+        except Exception:
+            inject_css()  # Use default
         
         # Render sidebar
         self._render_sidebar()
