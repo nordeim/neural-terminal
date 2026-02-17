@@ -11,16 +11,16 @@ import threading
 
 import streamlit as st
 
-from .application.state import StateManager, AppState
-from .application.orchestrator import ChatOrchestrator
-from .application.events import EventBus
-from .application.cost_tracker import CostTracker
-from .infrastructure.database import init_db, get_db_session
-from .infrastructure.repositories import SQLiteConversationRepository
-from .infrastructure.openrouter import OpenRouterClient
-from .infrastructure.token_counter import TokenCounter
-from .infrastructure.circuit_breaker import CircuitBreaker
-from .config import settings
+from neural_terminal.application.state import StateManager, AppState
+from neural_terminal.application.orchestrator import ChatOrchestrator
+from neural_terminal.application.events import EventBus
+from neural_terminal.application.cost_tracker import CostTracker
+from neural_terminal.infrastructure.database import init_db, get_db_session
+from neural_terminal.infrastructure.repositories import SQLiteConversationRepository
+from neural_terminal.infrastructure.openrouter import OpenRouterClient
+from neural_terminal.infrastructure.token_counter import TokenCounter
+from neural_terminal.infrastructure.circuit_breaker import CircuitBreaker
+from neural_terminal.config import settings
 
 
 @dataclass
@@ -33,7 +33,7 @@ class AppConfig:
     """
     default_model: str = "meta/llama-3.1-8b-instruct"
     budget_limit: Optional[Decimal] = None
-    theme: str = "amber"
+    theme: str = "terminal"
     max_tokens_per_message: int = 8192
     temperature: float = 0.7
     system_prompt: str = "You are a helpful assistant"
@@ -380,24 +380,35 @@ class ApplicationState:
         Yields:
             Stream chunks
         """
+        import sys
+        print(f"[DEBUG] app_state.send_message called with: '{content}'", file=sys.stderr)
+        
         from uuid import UUID
         
         if not self._orchestrator:
+            print(f"[DEBUG] Orchestrator not initialized", file=sys.stderr)
             raise RuntimeError("Application not initialized")
         
         # Ensure streaming state is reset from any previous errors
+        print(f"[DEBUG] Resetting is_streaming to False", file=sys.stderr)
         self.session.is_streaming = False
         
-        if not self.session.current_conversation_id:
-            # Create new conversation with current default model
-            self.create_conversation(model_id=self.config.default_model)
+        print(f"[DEBUG] Current conversation_id: {self.session.current_conversation_id}", file=sys.stderr)
         
+        if not self.session.current_conversation_id:
+            print(f"[DEBUG] No conversation exists, creating new one", file=sys.stderr)
+            # Create new conversation with current default model
+            conv_id = self.create_conversation(model_id=self.config.default_model)
+            print(f"[DEBUG] Created conversation with ID: {conv_id}", file=sys.stderr)
+        
+        print(f"[DEBUG] Setting is_streaming to True", file=sys.stderr)
         self.session.is_streaming = True
         self.session.streaming_content = ""
         
         try:
             # Convert string UUID to UUID object
             conv_id = UUID(self.session.current_conversation_id)
+            print(f"[DEBUG] About to call orchestrator.send_message", file=sys.stderr)
             
             async for delta, metadata in self._orchestrator.send_message(
                 conversation_id=conv_id,
@@ -405,11 +416,18 @@ class ApplicationState:
                 temperature=self.config.temperature,
             ):
                 # delta is the text chunk, metadata is None for streaming, dict for final
+                print(f"[DEBUG] Received delta: '{delta}', metadata: {metadata}", file=sys.stderr)
                 if delta:
                     self.session.streaming_content += delta
                     yield delta
         
+        except Exception as e:
+            print(f"[DEBUG] Exception in send_message: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            raise
         finally:
+            print(f"[DEBUG] Finally block - resetting is_streaming to False", file=sys.stderr)
             self.session.is_streaming = False
             self._update_stats()
     

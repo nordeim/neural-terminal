@@ -10,14 +10,14 @@ from decimal import Decimal
 
 import streamlit as st
 
-from .app_state import ApplicationState, get_app_state, AppConfig
-from .components.styles import StyleManager, inject_css
-from .components.themes import ThemeRegistry
-from .components.chat_container import ChatContainer, MessageViewModel
-from .components.header import Header, HeaderConfig, Sidebar
-from .components.status_bar import StatusBar, StatusInfo, CostDisplay
-from .components.message_renderer import MessageRenderer
-from .components.error_handler import ErrorHandler, ErrorSeverity
+from neural_terminal.app_state import ApplicationState, get_app_state, AppConfig
+from neural_terminal.components.styles import StyleManager, inject_css
+from neural_terminal.components.themes import ThemeRegistry
+from neural_terminal.components.chat_container import ChatContainer, MessageViewModel
+from neural_terminal.components.header import Header, HeaderConfig, Sidebar
+from neural_terminal.components.status_bar import StatusBar, StatusInfo, CostDisplay
+from neural_terminal.components.message_renderer import MessageRenderer
+from neural_terminal.components.error_handler import ErrorHandler, ErrorSeverity
 
 
 class NeuralTerminalApp:
@@ -306,13 +306,12 @@ class NeuralTerminalApp:
         """Render message input area."""
         st.divider()
         
-        # Check and handle clear flag BEFORE widget instantiation.
-        # Streamlit prohibits modifying session_state after widget with same key
-        # is instantiated (StreamlitAPIException). We defer the clear operation
-        # by using a flag that is processed on the next render cycle.
-        if st.session_state.get("_clear_message_input", False):
+        # Check if we need to clear input from previous message
+        if st.session_state.get("_clear_input_on_next_render", False):
+            # Clear the input by setting it to empty in session state
+            # This works because it happens BEFORE the widget is created
             st.session_state["message_input"] = ""
-            st.session_state["_clear_message_input"] = False
+            st.session_state["_clear_input_on_next_render"] = False
         
         with st.container():
             col1, col2 = st.columns([6, 1])
@@ -330,18 +329,27 @@ class NeuralTerminalApp:
                 st.write("")  # Spacer
                 st.write("")
                 
-                disabled = (
-                    self._app_state.session.is_streaming
-                    or not prompt.strip()
-                )
-                
+                # Simple Save button approach - always active, grab content on click
                 if st.button(
                     "Send",
                     use_container_width=True,
-                    disabled=disabled,
+                    disabled=False,  # Always active - no state management
                     type="primary",
                 ):
-                    self._handle_send_message(prompt)
+                    # Debug: Log button click
+                    import sys
+                    print(f"[DEBUG] Send button clicked!", file=sys.stderr)
+                    
+                    # Grab whatever is in the input box right now
+                    current_content = st.session_state.get("message_input", "")
+                    print(f"[DEBUG] Current input content: '{current_content}'", file=sys.stderr)
+                    
+                    # Only send if there's actual content
+                    if current_content.strip():
+                        print(f"[DEBUG] Sending message: '{current_content}'", file=sys.stderr)
+                        self._handle_send_message(current_content)
+                    else:
+                        print(f"[DEBUG] No content to send, ignoring click", file=sys.stderr)
     
     def _handle_send_message(self, content: str) -> None:
         """Handle sending a message.
@@ -349,18 +357,26 @@ class NeuralTerminalApp:
         Args:
             content: Message content
         """
+        import sys
+        print(f"[DEBUG] _handle_send_message called with: '{content}'", file=sys.stderr)
+        
         if not content.strip():
+            print(f"[DEBUG] Early return - content is empty after strip", file=sys.stderr)
             return
         
-        # Set flag to clear input on next render cycle.
-        # Cannot directly modify widget-bound session state after widget instantiation
-        # due to Streamlit API restrictions (StreamlitAPIException).
-        st.session_state["_clear_message_input"] = True
+        print(f"[DEBUG] Current session state:", file=sys.stderr)
+        print(f"  - is_streaming: {self._app_state.session.is_streaming}", file=sys.stderr)
+        print(f"  - current_conversation_id: {self._app_state.session.current_conversation_id}", file=sys.stderr)
+        print(f"  - error_message: {self._app_state.session.error_message}", file=sys.stderr)
         
         # Run async message sending
         try:
+            print(f"[DEBUG] About to call _run_async_send", file=sys.stderr)
             self._run_async_send(content)
         except Exception as e:
+            print(f"[DEBUG] Exception in _handle_send_message: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             self._error_handler.show_error(f"Failed to send message: {e}")
     
     def _run_async_send(self, content: str) -> None:
@@ -369,18 +385,41 @@ class NeuralTerminalApp:
         Args:
             content: Message content
         """
-        from .components.stream_bridge import run_async
+        import sys
+        print(f"[DEBUG] _run_async_send called with: '{content}'", file=sys.stderr)
+        
+        from neural_terminal.components.stream_bridge import run_async
         
         async def send():
+            print(f"[DEBUG] Async send function starting", file=sys.stderr)
             chunks = []
-            async for chunk in self._app_state.send_message(content):
-                chunks.append(chunk)
-            return "".join(chunks)
+            try:
+                async for chunk in self._app_state.send_message(content):
+                    print(f"[DEBUG] Received chunk: '{chunk}'", file=sys.stderr)
+                    chunks.append(chunk)
+                result = "".join(chunks)
+                print(f"[DEBUG] Final result: '{result}'", file=sys.stderr)
+                return result
+            except Exception as e:
+                print(f"[DEBUG] Exception in async send: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                raise
         
         try:
+            print(f"[DEBUG] About to call run_async", file=sys.stderr)
             result = run_async(send())
+            print(f"[DEBUG] run_async completed, result: '{result}'", file=sys.stderr)
+            
+            # Clear input after successful send
+            if result.strip():
+                st.session_state["_clear_input_on_next_render"] = True
+            
             st.rerun()
         except Exception as e:
+            print(f"[DEBUG] Exception in _run_async_send: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             raise e
     
     def _on_model_change(self, model: str) -> None:
@@ -400,7 +439,7 @@ class NeuralTerminalApp:
         st.subheader("API Configuration (from .env)")
         
         # Import settings to display current env values
-        from .config import settings
+        from neural_terminal.config import settings
         
         # Display masked API key
         api_key_value = settings.openrouter_api_key.get_secret_value()

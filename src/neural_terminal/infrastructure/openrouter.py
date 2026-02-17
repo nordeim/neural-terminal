@@ -172,20 +172,34 @@ class OpenRouterClient:
                 try:
                     chunk = json.loads(data)
                     
+                    # Debug logging
+                    import sys
+                    print(f"[DEBUG] Parsed chunk: {chunk}", file=sys.stderr)
+                    
                     # Safely extract content with null checks
                     if chunk is None:
+                        print(f"[DEBUG] Chunk is None, continuing", file=sys.stderr)
                         continue
                     
                     choices = chunk.get("choices", [])
+                    print(f"[DEBUG] Choices: {choices}", file=sys.stderr)
+                    
                     if not choices or not isinstance(choices, list):
+                        print(f"[DEBUG] No valid choices, continuing", file=sys.stderr)
                         continue
                     
                     first_choice = choices[0] if choices else {}
+                    print(f"[DEBUG] First choice: {first_choice}", file=sys.stderr)
+                    
                     if first_choice is None:
+                        print(f"[DEBUG] First choice is None, continuing", file=sys.stderr)
                         continue
                     
                     delta = first_choice.get("delta", {}) or {}
+                    print(f"[DEBUG] Delta: {delta}", file=sys.stderr)
+                    
                     content = delta.get("content", "") if delta else ""
+                    print(f"[DEBUG] Content: '{content}'", file=sys.stderr)
                     
                     if content:
                         full_content += content
@@ -195,7 +209,7 @@ class OpenRouterClient:
                             "accumulated": full_content,
                         }
                     
-                    if "usage" in chunk:
+                    if "usage" in chunk and chunk["usage"] is not None:
                         u = chunk["usage"]
                         usage = TokenUsage(
                             prompt_tokens=u.get("prompt_tokens", 0),

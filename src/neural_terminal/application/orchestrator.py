@@ -2,9 +2,10 @@
 
 Coordinates between repositories, external APIs, and event system.
 """
+import sys
 import time
 from decimal import Decimal
-from typing import AsyncGenerator, List, Optional, Tuple
+from typing import AsyncGenerator, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
 from neural_terminal.application.events import DomainEvent, EventBus, Events
@@ -116,13 +117,9 @@ class ChatOrchestrator:
         self,
         conversation_id: UUID,
         content: str,
-        temperature: float = 0.7
-    ) -> AsyncGenerator[Tuple[str, Optional[dict]], None]:
-        """Send message and stream response.
-        
-        Phase 0 Defect C-4 Implementation:
-            We manually check circuit state before streaming, then iterate
-            the async generator directly, then manually record success/failure.
+        temperature: float = 0.7,
+    ) -> AsyncGenerator[Tuple[str, Optional[Dict]], None]:
+        """Send a message and stream the response.
         
         Args:
             conversation_id: Conversation ID
@@ -147,12 +144,17 @@ class ChatOrchestrator:
             )
         
         # Load conversation
+        print(f"[DEBUG] Loading conversation {conversation_id}", file=sys.stderr)
         conv = self._repo.get_by_id(conversation_id)
         if not conv:
+            print(f"[DEBUG] Conversation not found!", file=sys.stderr)
             raise ValidationError(f"Conversation {conversation_id} not found")
+        
+        print(f"[DEBUG] Loaded conversation: model={conv.model_id}", file=sys.stderr)
         
         # Get model config for pricing
         model_config = self.get_model_config(conv.model_id)
+        print(f"[DEBUG] Model config: {model_config}", file=sys.stderr)
         
         # Create user message
         user_msg = Message(
@@ -205,11 +207,14 @@ class ChatOrchestrator:
         self._circuit._check_state()
         
         try:
+            print(f"[DEBUG] Starting stream from openrouter", file=sys.stderr)
             async for chunk in self._openrouter.chat_completion_stream(
                 messages=api_messages,
                 model=conv.model_id,
                 temperature=temperature,
             ):
+                print(f"[DEBUG] Received chunk from openrouter: {chunk}", file=sys.stderr)
+                
                 if chunk["type"] == "delta":
                     delta = chunk["content"]
                     assistant_content += delta
@@ -221,11 +226,13 @@ class ChatOrchestrator:
                         payload={"delta": delta}
                     ))
                     
+                    print(f"[DEBUG] Yielding delta: '{delta}'", file=sys.stderr)
                     yield (delta, None)
                 
                 elif chunk["type"] == "final":
                     final_usage = chunk.get("usage")
                     latency_ms = chunk.get("latency_ms", 0)
+                    print(f"[DEBUG] Final chunk received, usage: {final_usage}", file=sys.stderr)
             
             # Record success
             self._circuit._on_success()
